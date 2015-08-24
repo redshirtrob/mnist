@@ -72,6 +72,7 @@ class MLP(object):
             abs(self.hiddenLayer2.W).sum() +
             abs(self.logRegressionLayer.W).sum()
         )
+        print 'self.L1={}'.format(self.L1)
 
         # square of L2 norm
         self.L2_sqr = (
@@ -79,6 +80,7 @@ class MLP(object):
             (self.hiddenLayer2.W ** 2).sum() +
             (self.logRegressionLayer.W ** 2).sum()
         )
+        print 'self.L2_sqr={}'.format(self.L2_sqr)
 
         # Negative log likelihood
         self.negative_log_likelihood = (
@@ -93,6 +95,7 @@ class MLP(object):
             self.hiddenLayer2.params +
             self.logRegressionLayer.params
         )
+        print 'self.params={}'.format(self.params)
 
         self.input = input
 
@@ -134,7 +137,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # minimize negative log likelihood & regularization terms during training
     cost = (
-        classifier.negative_log_likelihood(y) +
+        classifier.negative_log_likelihood(y) + 
         L1_reg * classifier.L1 +
         L2_reg * classifier.L2_sqr
     )
@@ -198,6 +201,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     print 'Number of minibatches: {}'.format(n_train_batches)
     while (epoch < n_epochs) and (not done_looping):
         epoch += 1
+
+        epoch_start_time = timeit.default_timer()
         for minibatch_index in xrange(n_train_batches):
             minibatch_avg_cost = train_model(minibatch_index)
             iter = (epoch - 1) * n_train_batches + minibatch_index
@@ -229,11 +234,17 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                         n_train_batches,
                         test_score * 100.
                     )
-
+                    
             if patience <= iter:
                 done_looping = True
                 break
             
+        epoch_end_time = timeit.default_timer()
+        print '    epoch {}, ran for {}s'.format(
+            epoch,
+            (epoch_end_time - epoch_start_time)
+        )
+
     end_time = timeit.default_timer()
     print 'Optimization complete.  Best validation score of {} %'.format(
         best_validation_loss * 100.
