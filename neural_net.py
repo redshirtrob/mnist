@@ -7,11 +7,63 @@ import theano
 import theano.tensor as T
 import timeit
 
-from logreg import LogisticRegression, load_data
+class LogisticRegression(object):
+    def __init__(self, input, n_in, n_out):
+        # Initialize the Weight Matrix
+        self.W = theano.shared(
+            value=np.zeros(
+                (n_in, n_out),
+                dtype=theano.config.floatX
+            ),
+            name='W',
+            borrow=True
+        )
 
+        # Initialize the biases
+        self.b = theano.shared(
+            value=np.zeros(
+                (n_out,),
+                dtype=theano.config.floatX
+            )
+        )
+
+        # symbolic expression for computing the matrix of class-membership
+        # probabilities
+        self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
+
+        # symbolic description of how to compute the prediction as class
+        # whose probabilit is maximal
+        self.y_pred = T.argmax(self.p_y_given_x, axis=1)
+
+        # model parameters
+        self.params = [self.W, self.b]
+
+        # model input
+        self.input = input
+
+    def negative_log_likelihood(self, y):
+        return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
+
+    def errors(self, y):
+        """Number of errors in the minibatch over the total number of
+        examples in the minibatch."""
+
+        # Check that y has the same dimension as y_pred
+        if y.ndim != self.y_pred.ndim:
+            raise TypeError(
+                'y should have the same shape as self.y_pred',
+                ('y', y.type, 'y_pred', self.y_pred.type)
+            )
+        # Check that y is the correct datatype
+        if y.dtype.startswith('int'):
+            return T.mean(T.neq(self.y_pred, y))
+        else:
+            raise NotImplementedError()
+        
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None, activation=T.tanh):
         self.input = input
+        self.n_out = n_out
 
         if W is None:
             W_values = np.asarray(
@@ -40,64 +92,61 @@ class HiddenLayer(object):
         )
 
         self.params = [self.W, self.b]
-
-class MLP(object):
-    def __init__(self, rng, input, n_in, n_hidden, n_hidden_2, n_out):
         
-        self.hiddenLayer = HiddenLayer(
-            rng=rng,
-            input=input,
-            n_in=n_in,
-            n_out=n_hidden,
-            activation=T.tanh
-        )
+class MLN(object):
+    def __init__(self, rng, input, n_in, n_out, hidden_layers):
+        assert len(hidden_layers) > 0
+        
+        prev_hidden_layer = None
 
-        self.hiddenLayer2 = HiddenLayer(
-            rng=rng,
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
-            n_out=n_hidden_2,
-            activation=T.tanh
-        )
-
+        # Create the hidden layers
+        self.hidden_layers = list()
+        for hidden_layer in hidden_layers:
+            if prev_hidden_layer is None:
+                hl_n_in = n_in
+                hl_input = input
+            else:
+                hl_n_in = prev_hidden_layer.n_out
+                hl_input = prev_hidden_layer.output
+                
+            hl = HiddenLayer(
+                rng=rng,
+                input=hl_input,
+                n_in=hl_n_in,
+                n_out=hidden_layer[0],
+                activation=hidden_layer[1]
+            )
+            self.hidden_layers.append(hl)
+            prev_hidden_layer = hl
+        
         self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer2.output,
-            n_in=n_hidden_2,
+            input=prev_hidden_layer.output,
+            n_in=prev_hidden_layer.n_out,
             n_out=n_out
         )
 
-        # L1 norm
-        self.L1 = (
-            abs(self.hiddenLayer.W).sum() +
-            abs(self.hiddenLayer2.W).sum() +
-            abs(self.logRegressionLayer.W).sum()
-        )
-
-        # square of L2 norm
-        self.L2_sqr = (
-            (self.hiddenLayer.W ** 2).sum() +
-            (self.hiddenLayer2.W ** 2).sum() +
-            (self.logRegressionLayer.W ** 2).sum()
-        )
+        self.L1 = reduce(lambda x,y: x+y, [abs(hl.W).sum() for hl in self.hidden_layers])
+        self.L2_sqr = reduce(lambda x,y: x+y, [abs(hl.W ** 2).sum() for hl in self.hidden_layers])
 
         # Negative log likelihood
         self.negative_log_likelihood = (
             self.logRegressionLayer.negative_log_likelihood
         )
-        print 'self.negative_log_likelihood={}'.format(self.negative_log_likelihood)
 
         self.errors = self.logRegressionLayer.errors
-
+        
         self.params = (
-            self.hiddenLayer.params +
-            self.hiddenLayer2.params +
+            reduce(lambda x,y: x+y, [hl.params for hl in self.hidden_layers]) +
             self.logRegressionLayer.params
         )
 
         self.input = input
 
-def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='mnist.pkl.gz', batch_size=20, n_hidden=500, n_hidden_2=50):
+def test_mln(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
+             dataset='mnist.pkl.gz', batch_size=20, hidden_layers=None):
+    if hidden_layers is None:
+        hidden_layers = [(500, T.tanh)]
+        
     datasets = load_data(dataset)
 
     train_set_x, train_set_y = datasets[0]
@@ -122,14 +171,13 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     rng = np.random.RandomState(1234)
 
-    # construct the MLP class
-    classifier = MLP(
+    # construct the MLN class
+    classifier = MLN(
         rng=rng,
         input=x,
         n_in=28 * 28,
-        n_hidden=n_hidden,
-        n_hidden_2=n_hidden_2,
-        n_out=10
+        n_out=10,
+        hidden_layers=hidden_layers
     )
 
     # minimize negative log likelihood & regularization terms during training
@@ -138,7 +186,6 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         L1_reg * classifier.L1 +
         L2_reg * classifier.L2_sqr
     )
-    print 'cost={}'.format(cost)
 
     test_model = theano.function(
         inputs=[index],
@@ -243,6 +290,24 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         test_score * 100.
     )
 
+def load_data(dataset):
+    def shared_dataset(data_xy):
+        data_x, data_y = data_xy
+        shared_x = theano.shared(np.asarray(data_x, dtype=theano.config.floatX))
+        shared_y = theano.shared(np.asarray(data_y, dtype=theano.config.floatX))
+        return shared_x, T.cast(shared_y, 'int32')
     
+    with gzip.open(dataset, 'rb') as f:
+        train_set, valid_set, test_set = cPickle.load(f)
+        
+    test_set_x, test_set_y = shared_dataset(test_set)
+    valid_set_x, valid_set_y = shared_dataset(valid_set)
+    train_set_x, train_set_y = shared_dataset(train_set)
+
+    rval = [(train_set_x, train_set_y), (valid_set_x, valid_set_y),
+            (test_set_x, test_set_y)]
+    return rval
+
+
 if __name__ == '__main__':
-    test_mlp()
+    test_mln(hidden_layers=[(500, T.tanh), (50, T.tanh)])
