@@ -318,4 +318,14 @@ def load_data(dataset):
 
 if __name__ == '__main__':
     # test_mln(hidden_layers=[(500, theano.tensor.nnet.sigmoid), (50, theano.tensor.nnet.sigmoid)])
-    test_mln(hidden_layers=[(500, T.tanh), (50, T.tanh)])
+
+    # test_mln(hidden_layers=[(500, T.tanh), (50, T.tanh), (30, theano.tensor.nnet.sigmoid)])
+    #   Optimization complete.  Best validation score of 1.82 %
+    #   obtained at iteration 477500, with test performance 1.88 %
+
+    # test_mln(hidden_layers=[(500, theano.tensor.nnet.sigmoid)])
+    #   Optimization complete.  Best validation score of 2.1 %
+    #   obtained at iteration 1375000, with test performance 2.05 %
+
+    test_mln(hidden_layers=[(500, theano.tensor.nnet.sigmoid), (50, theano.tensor.nnet.sigmoid)])
+    
