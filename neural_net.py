@@ -6,6 +6,7 @@ import numpy as np
 import theano
 import theano.tensor as T
 import timeit
+import dill
 
 class LogisticRegression(object):
     def __init__(self, input, n_in, n_out):
@@ -278,6 +279,10 @@ def test_mln(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                         test_score * 100.
                     )
 
+                    # save the best model
+                    with open('best_model.pkl', 'w') as f:
+                        dill.dump(classifier, f)
+                        
             if patience <= iter:
                 done_looping = True
                 break
